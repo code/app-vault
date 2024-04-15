@@ -123,6 +123,36 @@ const GITHUB_RESPONSE = {
   },
 };
 
+const BATCH_TOKEN_RESPONSE = {
+  request_id: '0d3bcb50-acc4-9acd-e466-8b66affe63e0',
+  lease_id: '',
+  renewable: false,
+  lease_duration: 0,
+  data: {
+    accessor: '',
+    creation_time: 1713213173,
+    creation_ttl: 1800,
+    display_name: 'token',
+    entity_id: '',
+    expire_time: '2024-04-15T16:02:53-05:00',
+    explicit_max_ttl: 0,
+    id: 'hvb.batch-token-id',
+    issue_time: '2024-04-15T15:32:53-05:00',
+    meta: null,
+    num_uses: 0,
+    orphan: false,
+    path: 'auth/token/create',
+    policies: ['default'],
+    renewable: false,
+    ttl: 1779,
+    type: 'batch',
+  },
+  wrap_info: null,
+  warnings: null,
+  auth: null,
+  mount_type: 'token',
+};
+
 module('Integration | Service | auth', function (hooks) {
   setupTest(hooks);
   setupMirage(hooks);
@@ -170,9 +200,9 @@ module('Integration | Service | auth', function (hooks) {
       service
         .authenticate({ clusterId: '1', backend: 'token', data: { token: 'test' } })
         .then(() => {
-          const clusterTokenName = service.get('currentTokenName');
-          const clusterToken = service.get('currentToken');
-          const authData = service.get('authData');
+          const clusterTokenName = service.currentTokenName;
+          const clusterToken = service.currentToken;
+          const authData = service.authData;
 
           const expectedTokenName = `${TOKEN_PREFIX}${ROOT_PREFIX}${TOKEN_SEPARATOR}1`;
           assert.strictEqual(clusterToken, 'test', 'token is saved properly');
@@ -216,9 +246,9 @@ module('Integration | Service | auth', function (hooks) {
       environment: () => 'development',
     });
     await service.authenticate({ clusterId: '1', backend: 'token', data: { token: 'test' } });
-    const clusterTokenName = service.get('currentTokenName');
-    const clusterToken = service.get('currentToken');
-    const authData = service.get('authData');
+    const clusterTokenName = service.currentTokenName;
+    const clusterToken = service.currentToken;
+    const authData = service.authData;
 
     const expectedTokenName = `${TOKEN_PREFIX}${ROOT_PREFIX}${TOKEN_SEPARATOR}1`;
     assert.strictEqual(clusterToken, 'test', 'token is saved properly');
@@ -246,9 +276,9 @@ module('Integration | Service | auth', function (hooks) {
 
     run(() => {
       service.authenticate({ clusterId: '1', backend: 'github', data: { token: 'test' } }).then(() => {
-        const clusterTokenName = service.get('currentTokenName');
-        const clusterToken = service.get('currentToken');
-        const authData = service.get('authData');
+        const clusterTokenName = service.currentTokenName;
+        const clusterToken = service.currentToken;
+        const authData = service.authData;
         const expectedTokenName = `${TOKEN_PREFIX}github${TOKEN_SEPARATOR}1`;
 
         assert.strictEqual(GITHUB_RESPONSE.auth.client_token, clusterToken, 'token is saved properly');
@@ -278,9 +308,9 @@ module('Integration | Service | auth', function (hooks) {
           data: { username: USERPASS_RESPONSE.auth.metadata.username, password: 'passoword' },
         })
         .then(() => {
-          const clusterTokenName = service.get('currentTokenName');
-          const clusterToken = service.get('currentToken');
-          const authData = service.get('authData');
+          const clusterTokenName = service.currentTokenName;
+          const clusterToken = service.currentToken;
+          const authData = service.authData;
 
           assert.strictEqual(USERPASS_RESPONSE.auth.client_token, clusterToken, 'token is saved properly');
           assert.strictEqual(
@@ -313,9 +343,9 @@ module('Integration | Service | auth', function (hooks) {
     const service = this.owner.factoryFor('service:auth').create({ storage: () => this.store });
     run(() => {
       service.authenticate({ clusterId: '1', backend: 'token', data: { token: 'test' } }).then(() => {
-        const clusterTokenName = service.get('currentTokenName');
-        const clusterToken = service.get('currentToken');
-        const authData = service.get('authData');
+        const clusterTokenName = service.currentTokenName;
+        const clusterToken = service.currentToken;
+        const authData = service.authData;
 
         assert.strictEqual(clusterToken, 'test', 'token is saved properly');
         assert.strictEqual(
@@ -329,7 +359,43 @@ module('Integration | Service | auth', function (hooks) {
           tokenResp.data.display_name,
           'displayName is saved properly'
         );
-        assert.false(service.get('tokenExpired'), 'token is not expired');
+        assert.false(service.tokenExpired, 'token is not expired');
+        done();
+      });
+    });
+  });
+
+  test('token auth expiry with batch token', function (assert) {
+    assert.expect(5);
+    const tokenResp = BATCH_TOKEN_RESPONSE;
+    this.server.get('/auth/token/lookup-self', function (_, request) {
+      const resp = { ...tokenResp };
+      resp.id = request.requestHeaders['X-Vault-Token'];
+      resp.data.id = request.requestHeaders['X-Vault-Token'];
+      return resp;
+    });
+
+    const done = assert.async();
+    const service = this.owner.factoryFor('service:auth').create({ storage: () => this.store });
+    run(() => {
+      service.authenticate({ clusterId: '1', backend: 'token', data: { token: 'test' } }).then(() => {
+        const clusterTokenName = service.currentTokenName;
+        const clusterToken = service.currentToken;
+        const authData = service.authData;
+
+        assert.strictEqual(clusterToken, 'test', 'token is saved properly');
+        assert.strictEqual(
+          `${TOKEN_PREFIX}token${TOKEN_SEPARATOR}1`,
+          clusterTokenName,
+          'token name is saved properly'
+        );
+        assert.strictEqual(authData.backend.type, 'token', 'backend is saved properly');
+        assert.strictEqual(
+          authData.displayName,
+          tokenResp.data.display_name,
+          'displayName is saved properly'
+        );
+        assert.strictEqual(service.tokenExpirationDate, 1713214973000);
         done();
       });
     });
