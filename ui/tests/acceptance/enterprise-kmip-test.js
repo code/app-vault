@@ -214,6 +214,8 @@ module('Acceptance | Enterprise | KMIP secrets', function (hooks) {
     await settled();
     assert.ok(rolesPage.isEmpty, 'renders the empty role page');
     await rolesPage.create();
+    // Ensure the operation checkboxes are shown from openAPI
+    assert.dom('.b-checkbox').exists({ count: 27 });
     await settled();
     assert.strictEqual(
       currentURL(),
